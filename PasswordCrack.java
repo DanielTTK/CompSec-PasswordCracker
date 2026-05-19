@@ -53,6 +53,12 @@ public class PasswordCrack {
         dict = addUserInfoToDictonary(entries, dict);
         dict.add(""); // add empty for numeric base
 
+        String suffix = "";
+        for(int c=1;c<9;c++){
+            suffix += c;
+            dict.add(suffix);
+        }
+
         // test raw dict
         runMangleType(entries, dict, word -> Arrays.asList(word));
 
@@ -61,22 +67,52 @@ public class PasswordCrack {
             lowerCaseMangle, upperCaseMangle, capitalizeMangle, notCapitalizeMangle,
             deleteLastCharMangle, deleteFirstCharMangle,
             reverseMangle, appendReverseMangle, appendCapitalizedReverseMangle,
-            leetMangle, capitalizeEveryOtherMangle, appendCharMangle,
-            prependCharMangle, suffixMangle, fourDigitYearMangle, appendTwoDigitsMangle, suffixBaseMangle
+            leetMangle, capitalizeEveryOtherMangle, wordSuffixMangle, 
+            appendCommonNumbersMangle, appendCharMangle,
+            prependCharMangle, suffixMangle, fourDigitYearMangle, appendTwoDigitsMangle
         );
 
         // single mangles
         for (int m = 0; m < singleMangles.size(); m++) {
-            if(m == 16) continue;
             runMangleType(entries, dict, singleMangles.get(m));
         }
 
+
         // double mangles
-        for (int i = 0; i < singleMangles.size(); i++) {
-            for (int j = 0; j < singleMangles.size(); j++) {
+        // Test all, other than second mangle last 5
+        execMangles(
+            0, 
+            0, 
+            0, 
+            5, 
+            singleMangles, entries, dict
+        );
+
+        // Test only last 5 second mangles with all first mangles
+        execMangles(
+            0, 
+            0, 
+            singleMangles.size() - 5, 
+            0, 
+            singleMangles, entries, dict
+        );
+    }
+
+    private static void execMangles
+    (int singleMangleStart, 
+        int singleMangleEndOffset, 
+        int sncdMangleStart, 
+        int scndMangleEndOffset, 
+        List<Function<String, List<String>>> singleMangles, 
+        ArrayList<PasswordLine> entries, 
+        ArrayList<String> dict
+    ){
+        for (int i = singleMangleStart; i < singleMangles.size() - singleMangleEndOffset; i++) {
+            for (int j = sncdMangleStart; j < singleMangles.size() - scndMangleEndOffset; j++) {
                 if (i == j) continue;
                 if ((i == 0 || i == 1) && (j == 0 || j == 1)) continue;
                 if ((i == 2 || i == 3) && (j == 2 || j == 3)) continue;
+                if ((i >= 13) && (j >= 13)) continue;
 
                 runMangleType(entries, dict, doubleMangle(singleMangles.get(i), singleMangles.get(j)));
             }
@@ -86,44 +122,44 @@ public class PasswordCrack {
     static Function<String, List<String>> doubleMangle
     (Function<String, List<String>> mangleOne, Function<String, List<String>> mangleTwo) {
         return word -> {
-        List<String> mangles = new ArrayList<>();
-        List<String> firstMangles = mangleOne.apply(word);
-        for(int i = 0; i < firstMangles.size(); i++)
-            mangles.addAll(mangleTwo.apply(firstMangles.get(i)));
-        return mangles;
-    };
+            List<String> mangles = new ArrayList<>();
+            List<String> firstMangles = mangleOne.apply(word);
+            if (firstMangles == null || firstMangles.isEmpty()) return mangles;
+            for (int i = 0; i < firstMangles.size(); i++) {
+                List<String> secondMangles = mangleTwo.apply(firstMangles.get(i));
+                if (secondMangles != null && !secondMangles.isEmpty()) {
+                    mangles.addAll(secondMangles);
+                }
+            }
+            return mangles;
+        };
     }
 
-    static Function<String, List<String>> suffixBaseMangle = word -> {
-        if (!word.isEmpty()) return Collections.emptyList();
-        List<String> suffixes = new ArrayList<>();
+    static Function<String, List<String>> wordSuffixMangle = word -> {
+        if (word.length() >= 7) return Collections.emptyList();
+        return Arrays.asList(
+            word + "ing", word + "ed", word + "er", word + "ers", word + "e",
+            word + "ism", word + "ist", word + "tion", word + "is", word + "ting",
+            word + "rian",word + "arian", word + "itarian", word + "lent",
+            word + "etarian", word + "ness", word + "ment", word + "ian", 
+            word + "ianity", word + "ly", word + "es"
+        );
+    };
+
+    static Function<String, List<String>> appendCommonNumbersMangle = word -> {
+        if (word == null || word.isEmpty() || word.length() >= 7) return Collections.emptyList();
         List<String> mangles = new ArrayList<>();
-        String suffix = "";
-        for(int c=1;c<10;c++){
-            suffix += c;
-            suffixes.add(suffix);
-        }
-        suffix = "";
-        for(int c=9;c>=0;c--){
-            suffix += c;
-            suffixes.add(suffix);
-        }
-        suffix = "";
-        for(int c=1;c<10;c++){
-            suffix = String.format("%d%d%d", c, c, c);
-            suffixes.add(suffix);
-        }
-        
-        for(int s=0;s<suffixes.size();s++){
-            String mangle = word + suffixes.get(s);
+        String[] commonNumbers = {"00", "01", "12", "19", "20", "99", 
+                                "123", "1234", "12345", "111", "222"};
+        for(int i=0;i<commonNumbers.length;i++){
+            String mangle = word + commonNumbers[i];
             mangles.add(mangle);
         }
-
         return mangles;
     };
 
     static Function<String, List<String>> appendCapitalizedReverseMangle = word -> {
-        if (word.isEmpty()) return Collections.emptyList();
+        if (word == null || word.isEmpty()) return Collections.emptyList();
         List<String> mangles = new ArrayList<>();
         String capitalized = word.substring(0, 1).toUpperCase() + word.substring(1);
         String mangle = new StringBuilder(capitalized).reverse().toString();
@@ -133,6 +169,7 @@ public class PasswordCrack {
     };
 
     static Function<String, List<String>> appendReverseMangle = word -> {
+        if (word == null || word.isEmpty()) return Collections.emptyList();
         List<String> mangles = new ArrayList<>();
         String mangle = new StringBuilder(word).reverse().toString();
         mangles.add(word + mangle);
@@ -141,6 +178,7 @@ public class PasswordCrack {
     };
 
     static Function<String, List<String>> reverseMangle = word -> {
+        if (word == null) return Collections.emptyList();
         String mangle = new StringBuilder(word).reverse().toString();
         return Arrays.asList(mangle);
     };
@@ -160,7 +198,9 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
         return applyAlphabeticalMangle(w -> w.substring(0, 1).toUpperCase() + w.substring(1).toLowerCase()).apply(word);
     };
     static Function<String, List<String>> deleteLastCharMangle = word -> {
-        if (word == null || word.length() == 0) return Arrays.asList(word);
+        if (word == null) return Collections.emptyList();
+        if (word.length() == 0) return Arrays.asList(word);
+        if (word.length() > 8) return Collections.emptyList();
         return applyAlphabeticalMangle(w -> w.substring(0, w.length() - 1)).apply(word);
     };
     static Function<String, List<String>> deleteFirstCharMangle = word -> {
@@ -179,20 +219,25 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
      */
     private static Function<String, List<String>> applyAlphabeticalMangle(Function<String, String> mangle) {
     return word -> { 
-        if (word.isEmpty()) return Collections.emptyList();
+        if (word == null || word.isEmpty()) return Collections.emptyList();
         return Arrays.asList(mangle.apply(word)); };
 }
 
     static Function<String, List<String>> suffixMangle = word -> {
+        if (word == null) return Collections.emptyList();
+        if (word.length() >= 6) return Collections.emptyList();
+
         List<String> suffixes = new ArrayList<>();
         List<String> mangles = new ArrayList<>();
         String suffix = "";
-        for(int c=1;c<10;c++){
+        int max = 8 - word.length();
+
+        for(int c=1;c<max;c++){
             suffix += c;
             suffixes.add(suffix);
         }
         suffix = "";
-        for(int c=9;c>=0;c--){
+        for(int c=max-1;c>=0;c--){
             suffix += c;
             suffixes.add(suffix);
         }
@@ -222,6 +267,7 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
 
 
     static Function<String, List<String>> fourDigitYearMangle = word -> {
+        if (word == null || word.length() >= 6) return Collections.emptyList();
         List<String> mangles = new ArrayList<>();
         for(int y=1950;y<2026;y++){
             String mangle = word + y;
@@ -232,6 +278,7 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
     };
 
     static Function<String, List<String>> appendTwoDigitsMangle = word -> {
+        if (word == null || word.length() > 6) return Collections.emptyList();
         List<String> mangles = new ArrayList<>();
         // test "00","01","12","99" first.
         String[] prioDigits = {"00", "01", "12", "99"};
@@ -249,6 +296,7 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
     };
 
     static Function<String, List<String>> capitalizeEveryOtherMangle = word -> {
+        if (word == null) return Collections.emptyList();
         List<String> mangles = new ArrayList<>();
         StringBuilder sb = new StringBuilder(word);
         for (int i = 0; i < sb.length(); i++) {
@@ -429,7 +477,6 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
             String line;
             String encrypt = null;
             String salt = null;
-            int count = 0;
             while ((line = br.readLine()) != null) {
                 String[] parts = line.split(":");
                 if (parts.length >= 5) {
@@ -440,13 +487,6 @@ static Function<String, List<String>> notCapitalizeMangle = word -> {
                     System.err.println("Failed parsing entry ");
                     System.exit(1);
                 }
-
-                
-                if (count > 50){
-                    System.err.print("While in 'parsePasswdFile' went inf");
-                    break;
-                }
-                count++;
             }
         } catch (FileNotFoundException e) {
             System.err.println("Passwd file not found " + filename);
